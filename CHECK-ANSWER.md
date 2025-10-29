@@ -8,22 +8,22 @@ Usage
 
 From repository root:
 
-./check-answer --module 3 --lesson 4
+`./check-answer --module 3 --lesson 4`
 
 Short flags are available:
 
-./check-answer -m 3 -l 4
+`./check-answer -m 3 -l 4`
 
 Options
 -------
 
---module, -m      Module number or substring (e.g. `3`, `3-functions`)
+`--module`, `-m`:      Module number or substring (e.g. `3`, `3-functions`)
 
---lesson, -l      Lesson number, suffix, or folder name (e.g. `4`, `4-pass_by_value`, `pass_by_value`)
+`--lesson`, `-l`:      Lesson number, suffix, or folder name (e.g. `4`, `4-pass_by_value`, `pass_by_value`)
 
---check, -c       Run static checks on the student file (`gofmt -l` and `go vet`)
+`--check`, `-c`:       Run static checks on the student file (`gofmt -l` and `go vet`)
 
---no-clean, -n    Keep temporary output files when the run completes (default is to clean)
+`--no-clean`, `-n`:    Keep temporary output files when the run completes (default is to clean)
 
 What it does
 ------------
