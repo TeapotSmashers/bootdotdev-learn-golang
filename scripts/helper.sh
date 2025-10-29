@@ -233,33 +233,33 @@ STUDENT="$EXER_DIR/code.go"
 SOLUTION="$EXER_DIR/complete.go"
 
 # New test-mode: if the exercise contains a main_test.go, prefer running `go test <pkg>`
+MAIN_FILE="$EXER_DIR/main.go"
 TEST_FILE="$EXER_DIR/main_test.go"
-
 
 if [[ $CHECK_ONLY -eq 1 ]]; then
   TMPDIR=$(mktemp -d)
   echo "Running static checks on student file..."
   if [[ $DRY_RUN -eq 1 ]]; then
-    if [[ -f "$TEST_FILE" ]]; then
-      echo "DRY RUN: cd '$EXER_DIR' && gofmt -l '$TEST_FILE' > '$TMPDIR/gofmt.out' || true"
-      echo "DRY RUN: cd '$EXER_DIR' && go vet '$TEST_FILE' > '$TMPDIR/govet.out' 2>&1 || true"
+    if [[ -f "$MAIN_FILE" ]]; then
+      echo "DRY RUN: cd '$EXER_DIR' && gofmt -l '$MAIN_FILE' > '$TMPDIR/gofmt.out' || true"
+      echo "DRY RUN: cd '$EXER_DIR' && go vet '$MAIN_FILE' > '$TMPDIR/govet.out' 2>&1 || true"
     elif [[ -f "$STUDENT" ]]; then
       echo "DRY RUN: cd '$EXER_DIR' && gofmt -l '$STUDENT' > '$TMPDIR/gofmt.out' || true"
       echo "DRY RUN: cd '$EXER_DIR' && go vet '$STUDENT' > '$TMPDIR/govet.out' 2>&1 || true"
     else
-      echo "ERROR: neither $TEST_FILE nor $STUDENT found" >&2
+      echo "ERROR: neither $MAIN_FILE nor $STUDENT found" >&2
       exit 2
     fi
     exit 0
   fi
-  if [[ -f "$TEST_FILE" ]]; then
-    (cd "$EXER_DIR" && gofmt -l "$TEST_FILE" ) > "$TMPDIR/gofmt.out" || true
-    (cd "$EXER_DIR" && go vet "$TEST_FILE" ) > "$TMPDIR/govet.out" 2>&1 || true
+  if [[ -f "$MAIN_FILE" ]]; then
+    (cd "$EXER_DIR" && gofmt -l "$MAIN_FILE" ) > "$TMPDIR/gofmt.out" || true
+    (cd "$EXER_DIR" && go vet "$MAIN_FILE" ) > "$TMPDIR/govet.out" 2>&1 || true
   elif [[ -f "$STUDENT" ]]; then
     (cd "$EXER_DIR" && gofmt -l "$STUDENT" ) > "$TMPDIR/gofmt.out" || true
     (cd "$EXER_DIR" && go vet "$STUDENT" ) > "$TMPDIR/govet.out" 2>&1 || true
   else
-    echo "ERROR: neither $TEST_FILE nor $STUDENT found" >&2
+    echo "ERROR: neither $MAIN_FILE nor $STUDENT found" >&2
     exit 2
   fi
   if [[ -s "$TMPDIR/gofmt.out" ]]; then
