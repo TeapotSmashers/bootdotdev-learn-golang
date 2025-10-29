@@ -349,12 +349,12 @@ pretty_diff() {
   right="$2"
   if [[ $DIFF_VERTICAL -eq 1 ]]; then
     # side-by-side
-    if command -v sdiff >/dev/null 2>&1; then
+    if command -v diff >/dev/null 2>&1; then
       # portable side-by-side with width
-      sdiff -w 160 "$left" "$right" | sed -n '1,200p'
+      diff --color -EZy -W 160 "$left" "$right" | sed -n '1,200p' || true
       return
     else
-      echo "sdiff not available; falling back to unified diff" >&2
+      echo "side-by-side diff not available; falling back to unified diff" >&2
     fi
   fi
 
@@ -362,15 +362,13 @@ pretty_diff() {
   if command -v git >/dev/null 2>&1; then
     git --no-pager diff --no-index --color -- "$left" "$right" || true
     return
-  fi
-
-  # fallback to diff -u, try colordiff if present
-  if command -v colordiff >/dev/null 2>&1; then
+  elif command -v colordiff >/dev/null 2>&1; then
     colordiff -u "$left" "$right" || true
     return
   fi
 
-  diff -u "$left" "$right" || true
+  # fallback to diff -u
+  diff -u --color "$left" "$right" || true
 }
 
 
