@@ -16,6 +16,7 @@ Additional commands:
   --open, -o            Open all files in the exercise folder in an editor (auto-detected)
   --editor <cmd>        Force an editor command (example: "code" or "nvim")
   --dry-run, -d         Print the editor command instead of executing it
+  --vertical, -V        Show vertical (side-by-side) diffs instead of the default unified diff
 
 Examples:
   $(basename "$0") --module 3 --lesson 4
@@ -33,6 +34,7 @@ NO_CLEAN=0
 OPEN=0
 FORCE_EDITOR=""
 DRY_RUN=0
+DIFF_VERTICAL=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -50,6 +52,8 @@ while [[ $# -gt 0 ]]; do
       FORCE_EDITOR="$2"; shift 2 ;;
     --dry-run|-d)
       DRY_RUN=1; shift ;;
+    --vertical|-V)
+      DIFF_VERTICAL=1; shift ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -352,14 +356,16 @@ else
   echo
   echo "Difference summary:" >&2
   if [[ $DIFF_OK -ne 1 ]]; then
-    echo "  - stdout differs (see above)" >&2
+    echo "  - stdout differs (see below)" >&2
+    echo "--- Stdout diff ---"
+    pretty_diff "$norm_solution" "$norm_student"
   else
     echo "  - stdout: match" >&2
   fi
   if [[ $ERR_DIFF_OK -ne 1 ]]; then
-    echo "  - stderr differs (shown below):" >&2
-    sed -n '1,200p' "$student_err" >&2
-    sed -n '1,200p' "$solution_err" >&2
+    echo "  - stderr differs (see below):" >&2
+    echo "--- Stderr diff ---"
+    pretty_diff "$norm_solution_err" "$norm_student_err"
   else
     echo "  - stderr: match" >&2
   fi
@@ -369,6 +375,34 @@ else
     echo "  - exit codes: match ($SEX)" >&2
   fi
 fi
+
+pretty_diff() {
+  left="$1"
+  right="$2"
+  if [[ $DIFF_VERTICAL -eq 1 ]]; then
+    # side-by-side
+    if command -v sdiff >/dev/null 2>&1; then
+      sdiff -W 160 --expand-tabs --left-column "$left" "$right" | sed -n '1,200p'
+      return
+    else
+      echo "sdiff not available; falling back to unified diff" >&2
+    fi
+  fi
+
+  # horizontal colored diff: prefer git --no-pager diff --no-index --color
+  if command -v git >/dev/null 2>&1; then
+    git --no-pager diff --no-index --color -- "$left" "$right" || true
+    return
+  fi
+
+  # fallback to diff -u, try colordiff if present
+  if command -v colordiff >/dev/null 2>&1; then
+    colordiff -u "$left" "$right" || true
+    return
+  fi
+
+  diff -u "$left" "$right" || true
+}
 
 # Clean up unless NO_CLEAN is set
 if [[ "$OK" == true && $NO_CLEAN -eq 0 ]]; then
