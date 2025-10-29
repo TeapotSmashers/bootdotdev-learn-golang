@@ -57,14 +57,14 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       usage; exit 0 ;;
     *)
-      echo "Unknown arg: $1" >&2; usage; exit 2;;
+      echo "Unknown arg: $1" >&2; usage; exit 99;;
   esac
 done
 
 if [[ -z "$MODULE" || -z "$LESSON" ]]; then
   echo "Both --module and --lesson are required" >&2
   usage
-  exit 2
+  exit 1
 fi
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -221,6 +221,7 @@ if [[ $OPEN -eq 1 ]]; then
   else
     exit 2
   fi
+  exit 2
 fi
 
 STUDENT="$EXER_DIR/code.go"
