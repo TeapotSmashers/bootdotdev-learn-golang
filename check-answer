@@ -22,6 +22,7 @@ LESSON=""
 
 
 CHECK_ONLY=0
+NO_CLEAN=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -29,8 +30,10 @@ while [[ $# -gt 0 ]]; do
       MODULE="$2"; shift 2 ;;
     --lesson|-l)
       LESSON="$2"; shift 2 ;;
-    --static-check|-s)
+    --check|-c)
       CHECK_ONLY=1; shift ;;
+    --no-clean|-n)
+      NO_CLEAN=1; shift ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -46,15 +49,19 @@ fi
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Find the module directory under course that contains the MODULE substring
+# Find the module directory under course: try exact, then prefix (3-...), then substring
 MODULE_DIR=""
-# First try prefix match (e.g., 3-...), then fallback to substring match
-for d in "$ROOT_DIR"/course/${MODULE}-*; do
-  if [[ -d "$d" ]]; then
-    MODULE_DIR="$d"
-    break
-  fi
-done
+if [[ -d "$ROOT_DIR/course/$MODULE" ]]; then
+  MODULE_DIR="$ROOT_DIR/course/$MODULE"
+fi
+if [[ -z "$MODULE_DIR" ]]; then
+  for d in "$ROOT_DIR"/course/${MODULE}-*; do
+    if [[ -d "$d" ]]; then
+      MODULE_DIR="$d"
+      break
+    fi
+  done
+fi
 if [[ -z "$MODULE_DIR" ]]; then
   for d in "$ROOT_DIR"/course/*; do
     if [[ -d "$d" && "$(basename "$d")" == *"$MODULE"* ]]; then
@@ -74,6 +81,11 @@ EXER_DIR=""
 for parent in exercises challenges; do
   PARENT_DIR="$MODULE_DIR/$parent"
   if [[ -d "$PARENT_DIR" ]]; then
+    # exact match
+    if [[ -d "$PARENT_DIR/$LESSON" ]]; then
+      EXER_DIR="$PARENT_DIR/$LESSON"
+      break
+    fi
     # try prefix match first (e.g., 4-... or 6a-...)
     for d in "$PARENT_DIR"/${LESSON}-*; do
       if [[ -d "$d" ]]; then
@@ -113,8 +125,10 @@ fi
 TMPDIR=$(mktemp -d)
 student_out="$TMPDIR/student.out"
 student_err="$TMPDIR/student.err"
+student_exit="$TMPDIR/student.exit"
 solution_out="$TMPDIR/solution.out"
 solution_err="$TMPDIR/solution.err"
+solution_exit="$TMPDIR/solution.exit"
 
 # helper: normalize output (trim leading/trailing blank lines and trailing spaces)
 normalize() {
@@ -143,16 +157,26 @@ if [[ $CHECK_ONLY -eq 1 ]]; then
 fi
 
 echo "Running student code..."
-if ! go run "$STUDENT" >"$student_out" 2>"$student_err"; then
-  echo "Student program exited with non-zero status. Stderr:" >&2
+set +e
+go run "$STUDENT" >"$student_out" 2>"$student_err"
+SEX=$?
+echo $SEX > "$student_exit"
+set -e
+if [[ $SEX -ne 0 ]]; then
+  echo "Student program exited with non-zero status ($SEX). Stderr:" >&2
   sed -n '1,200p' "$student_err" >&2
   echo "--- Full stdout ---"
   sed -n '1,200p' "$student_out"
 fi
 
 echo "Running solution code..."
-if ! go run "$SOLUTION" >"$solution_out" 2>"$solution_err"; then
-  echo "Solution program exited with non-zero status. Stderr:" >&2
+set +e
+go run "$SOLUTION" >"$solution_out" 2>"$solution_err"
+SOX=$?
+echo $SOX > "$solution_exit"
+set -e
+if [[ $SOX -ne 0 ]]; then
+  echo "Solution program exited with non-zero status ($SOX). Stderr:" >&2
   sed -n '1,200p' "$solution_err" >&2
   echo "--- Full stdout ---"
   sed -n '1,200p' "$solution_out"
@@ -161,8 +185,11 @@ fi
 echo
 echo "--- Student stdout (raw) ---"
 sed -n '1,200p' "$student_out"
+echo ""
 echo "--- Solution stdout (raw) ---"
 sed -n '1,200p' "$solution_out"
+echo ""
+echo "--- Diff (solution vs student) ---"
 
 # normalize both outputs before diffing
 norm_student="$TMPDIR/student.norm"
@@ -170,18 +197,65 @@ norm_solution="$TMPDIR/solution.norm"
 cat "$student_out" | normalize > "$norm_student"
 cat "$solution_out" | normalize > "$norm_solution"
 
-if diff -u "$norm_solution" "$norm_student"; then
+DIFF_OK=0
+if diff -u "$norm_solution" "$norm_student" >/dev/stdout 2>/dev/null; then
+  DIFF_OK=1
+fi
+
+# Compare stderr normalized
+norm_student_err="$TMPDIR/student.err.norm"
+norm_solution_err="$TMPDIR/solution.err.norm"
+cat "$student_err" | normalize > "$norm_student_err"
+cat "$solution_err" | normalize > "$norm_solution_err"
+ERR_DIFF_OK=0
+if diff -u "$norm_solution_err" "$norm_student_err" >/dev/stdout 2>/dev/null; then
+  ERR_DIFF_OK=1
+fi
+
+# Read exit codes
+SEX=$(cat "$student_exit")
+SOX=$(cat "$solution_exit")
+
+OK=true
+if [[ $DIFF_OK -eq 1 && $ERR_DIFF_OK -eq 1 && $SEX -eq $SOX ]]; then
   echo
-  echo "Outputs match — well done!"
+  echo "Outputs and stderr and exit codes match — well done!"
+else
+  OK=false
+  echo
+  echo "Difference summary:" >&2
+  if [[ $DIFF_OK -ne 1 ]]; then
+    echo "  - stdout differs (see above)" >&2
+  else
+    echo "  - stdout: match" >&2
+  fi
+  if [[ $ERR_DIFF_OK -ne 1 ]]; then
+    echo "  - stderr differs (shown below):" >&2
+    sed -n '1,200p' "$student_err" >&2
+    sed -n '1,200p' "$solution_err" >&2
+  else
+    echo "  - stderr: match" >&2
+  fi
+  if [[ $SEX -ne $SOX ]]; then
+    echo "  - exit codes differ: student=$SEX solution=$SOX" >&2
+  else
+    echo "  - exit codes: match ($SEX)" >&2
+  fi
+fi
+
+# Clean up unless NO_CLEAN is set
+if [[ "$OK" == true && $NO_CLEAN -eq 0 ]]; then
   rm -rf "$TMPDIR"
+elif [[ "$OK" == false && $NO_CLEAN -eq 0 ]]; then
+  # on failure, default to cleaning too (user requested autoclean). If user wants to keep outputs, use --no-clean
+  rm -rf "$TMPDIR"
+fi
+
+if [[ "$OK" == true ]]; then
   exit 0
 else
-  echo
-  echo "Outputs differ — see diff above." >&2
-  echo "Student stderr (if any):" >&2
-  sed -n '1,200p' "$student_err" >&2
-  echo "Solution stderr (if any):" >&2
-  sed -n '1,200p' "$solution_err" >&2
-  echo "Temporary files left in: $TMPDIR" >&2
+  if [[ $NO_CLEAN -eq 1 ]]; then
+    echo "Temporary files left in: $TMPDIR" >&2
+  fi
   exit 7
 fi
