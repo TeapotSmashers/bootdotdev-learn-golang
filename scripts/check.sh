@@ -12,8 +12,15 @@ Usage: $(basename "$0") --module <n> --lesson <n>
 Runs the user's code.go and the solution complete.go for the specified module and lesson
 and compares their outputs.
 
+Additional commands:
+  --open, -o            Open all files in the exercise folder in an editor (auto-detected)
+  --editor <cmd>        Force an editor command (example: "code" or "nvim")
+  --dry-run, -d         Print the editor command instead of executing it
+
 Examples:
   $(basename "$0") --module 3 --lesson 4
+  $(basename "$0") -m 4 -l 1 --open
+  $(basename "$0") -m 4 -l 1 --open --editor code
 EOF
 }
 
@@ -23,6 +30,9 @@ LESSON=""
 
 CHECK_ONLY=0
 NO_CLEAN=0
+OPEN=0
+FORCE_EDITOR=""
+DRY_RUN=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -34,6 +44,12 @@ while [[ $# -gt 0 ]]; do
       CHECK_ONLY=1; shift ;;
     --no-clean|-n)
       NO_CLEAN=1; shift ;;
+    --open|-o)
+      OPEN=1; shift ;;
+    --editor)
+      FORCE_EDITOR="$2"; shift 2 ;;
+    --dry-run|-d)
+      DRY_RUN=1; shift ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -109,6 +125,99 @@ if [[ -z "$EXER_DIR" ]]; then
 fi
 
 echo "Found exercise: $EXER_DIR"
+
+# If requested, open all files in the exercise folder in an editor
+detect_editor() {
+  # priority: FORCE_EDITOR > $VISUAL > $EDITOR > .env file > common binaries
+  if [[ -n "$FORCE_EDITOR" ]]; then
+    echo "$FORCE_EDITOR"
+    return
+  fi
+  # prefer .env, then VISUAL/EDITOR
+  if [[ -f "$ROOT_DIR/.env" ]]; then
+    editor_from_env=$(grep -E '^EDITOR=' "$ROOT_DIR/.env" | head -n1 | cut -d'=' -f2- | tr -d '"') || true
+    if [[ -n "$editor_from_env" ]]; then
+      echo "$editor_from_env"; return
+    fi
+  fi
+  if [[ -n "${VISUAL:-}" ]]; then
+    echo "$VISUAL"; return
+  fi
+  if [[ -n "${EDITOR:-}" ]]; then
+    echo "$EDITOR"; return
+  fi
+  # check common editors
+  for cmd in code nvim vim zed atom subl; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+      echo "$cmd"; return
+    fi
+  done
+  # fallback to open (mac) or xdg-open (linux)
+  if command -v xdg-open >/dev/null 2>&1; then
+    echo "xdg-open"; return
+  fi
+  if command -v open >/dev/null 2>&1; then
+    echo "open"; return
+  fi
+  echo ""; return
+}
+
+open_exercise_files() {
+  editor_cmd=$(detect_editor)
+  if [[ -z "$editor_cmd" ]]; then
+    echo "No editor detected. Set VISUAL/EDITOR or create a .env with EDITOR=..." >&2
+    return 2
+  fi
+
+  # collect files to open (non-hidden)
+  files=("$EXER_DIR"/*)
+  if [[ ${#files[@]} -eq 0 ]]; then
+    echo "No files to open in $EXER_DIR" >&2
+    return 1
+  fi
+
+  # build command
+  # special-case VSCode which accepts directory or file list via 'code' binary
+  case "$(basename "$editor_cmd")" in
+    code)
+      cmd=("$editor_cmd" "${files[@]}") ;;
+    nvim|vim|zed|subl|atom)
+      cmd=("$editor_cmd" "${files[@]}") ;;
+    xdg-open|open)
+      # open files one-by-one
+      cmd=("$editor_cmd") ;;
+    *)
+      cmd=("$editor_cmd" "${files[@]}") ;;
+  esac
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    printf "DRY RUN: %s\n" "${cmd[*]}"
+    return 0
+  fi
+
+  echo "Opening files in editor: ${editor_cmd}"
+  if [[ "${cmd[0]}" == "xdg-open" || "${cmd[0]}" == "open" ]]; then
+    for f in "${files[@]}"; do
+      "$editor_cmd" "$f" >/dev/null 2>&1 || true
+    done
+  else
+    "${cmd[@]}" &
+  fi
+}
+
+if [[ $OPEN -eq 1 ]]; then
+  # Make sure open is exclusive with other actions that run code
+  if [[ $CHECK_ONLY -eq 1 || $NO_CLEAN -ne 0 ]]; then
+    echo "--open cannot be combined with --check or --no-clean" >&2
+    exit 2
+  fi
+  # Open and exit (do not run the tests)
+  if open_exercise_files; then
+    exit 0
+  else
+    exit 2
+  fi
+fi
 
 STUDENT="$EXER_DIR/code.go"
 SOLUTION="$EXER_DIR/complete.go"
