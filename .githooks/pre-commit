@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Pre-commit hook template: prevent accidental commits that include changes under `course/`.
+# Install locally by symlinking this file to .git/hooks/pre-commit (see scripts/install-githook.sh)
+
+echo "Running pre-commit hook: block commits that include 'course/' files"
+
+# gather staged files (added, copied, modified, renamed, type-changed)
+staged_files=$(git diff --cached --name-only --diff-filter=ACMRT)
+
+if [[ -z "$staged_files" ]]; then
+  # nothing staged
+  exit 0
+fi
+
+course_files=$(printf "%s\n" "$staged_files" | grep -E '^course/' || true)
+
+if [[ -n "$course_files" ]]; then
+  echo "\nERROR: Your commit includes changes under 'course/' which should not be committed." >&2
+  echo "Files:" >&2
+  printf "%s\n" "$course_files" >&2
+  echo "\nIf you really want to commit these files you have a few choices:" >&2
+  echo "  1) Commit while bypassing hooks: git commit --no-verify -m '...'" >&2
+  echo "  2) Force-add a tracked file (not recommended): git add -f <path> && git commit" >&2
+  echo "  3) Remove these files from the commit (unstage): git reset HEAD <path>" >&2
+  echo "\nTo allow team-level enforcement, consider using a CI check instead of bypassing hooks." >&2
+  exit 1
+fi
+
+exit 0
