@@ -247,6 +247,11 @@ normalize() {
 
 if [[ $CHECK_ONLY -eq 1 ]]; then
   echo "Running static checks on student file..."
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY RUN: cd '$EXER_DIR' && gofmt -l '$STUDENT' > '$TMPDIR/gofmt.out' || true"
+    echo "DRY RUN: cd '$EXER_DIR' && go vet '$STUDENT' > '$TMPDIR/govet.out' 2>&1 || true"
+    exit 0
+  fi
   (cd "$EXER_DIR" && gofmt -l "$STUDENT" ) > "$TMPDIR/gofmt.out" || true
   (cd "$EXER_DIR" && go vet "$STUDENT" ) > "$TMPDIR/govet.out" 2>&1 || true
   if [[ -s "$TMPDIR/gofmt.out" ]]; then
@@ -267,7 +272,11 @@ fi
 
 echo "Running student code..."
 set +e
-go run "$STUDENT" >"$student_out" 2>"$student_err"
+if [[ $DRY_RUN -eq 1 ]]; then
+  echo "DRY RUN: go run '$STUDENT' > '$student_out' 2> '$student_err'"
+else
+  go run "$STUDENT" >"$student_out" 2>"$student_err"
+fi
 SEX=$?
 echo $SEX > "$student_exit"
 set -e
@@ -280,10 +289,19 @@ fi
 
 echo "Running solution code..."
 set +e
-go run "$SOLUTION" >"$solution_out" 2>"$solution_err"
-SOX=$?
-echo $SOX > "$solution_exit"
-set -e
+if [[ $DRY_RUN -eq 1 ]]; then
+  echo "DRY RUN: go run '$SOLUTION' > '$solution_out' 2> '$solution_err'"
+  echo
+  echo "DRY RUN: (no outputs produced)"
+  # Clean up tmpdir and exit successfully for dry-run
+  rm -rf "$TMPDIR"
+  exit 0
+else
+  go run "$SOLUTION" >"$solution_out" 2>"$solution_err"
+  SOX=$?
+  echo $SOX > "$solution_exit"
+  set -e
+fi
 if [[ $SOX -ne 0 ]]; then
   echo "Solution program exited with non-zero status ($SOX). Stderr:" >&2
   sed -n '1,200p' "$solution_err" >&2
