@@ -330,23 +330,6 @@ if [[ -f "$TEST_FILE" || $TEST_ONLY -eq 1 ]]; then
   exit $TEX
 fi
 
-if [[ ! -f "$STUDENT" ]]; then
-  echo "Student file not found: $STUDENT" >&2
-  exit 5
-fi
-if [[ ! -f "$SOLUTION" ]]; then
-  echo "Solution file not found: $SOLUTION" >&2
-  exit 6
-fi
-
-# for legacy test mode
-TMPDIR=$(mktemp -d)
-student_out="$TMPDIR/student.out"
-student_err="$TMPDIR/student.err"
-student_exit="$TMPDIR/student.exit"
-solution_out="$TMPDIR/solution.out"
-solution_err="$TMPDIR/solution.err"
-solution_exit="$TMPDIR/solution.exit"
 
 # helper: normalize output (trim leading/trailing blank lines and trailing spaces)
 normalize() {
@@ -383,147 +366,145 @@ pretty_diff() {
   diff -u "$left" "$right" || true
 }
 
-if [[ $CHECK_ONLY -eq 1 ]]; then
-  echo "Running static checks on student file..."
+if [[ $TEST_ONLY -ne 1 ]]; then
+  # Check that student and solution files exist
+  if [[ ! -f "$STUDENT" ]]; then
+    echo "Student file not found: $STUDENT" >&2
+    exit 5
+  fi
+  if [[ ! -f "$SOLUTION" ]]; then
+    echo "Solution file not found: $SOLUTION" >&2
+    exit 6
+  fi
+
+  # for legacy test mode
+  TMPDIR=$(mktemp -d)
+  student_out="$TMPDIR/student.out"
+  student_err="$TMPDIR/student.err"
+  student_exit="$TMPDIR/student.exit"
+  solution_out="$TMPDIR/solution.out"
+  solution_err="$TMPDIR/solution.err"
+  solution_exit="$TMPDIR/solution.exit"
+
+  echo "Running student code..."
+  set +e
   if [[ $DRY_RUN -eq 1 ]]; then
-    echo "DRY RUN: cd '$EXER_DIR' && gofmt -l '$STUDENT' > '$TMPDIR/gofmt.out' || true"
-    echo "DRY RUN: cd '$EXER_DIR' && go vet '$STUDENT' > '$TMPDIR/govet.out' 2>&1 || true"
-    exit 0
-  fi
-  (cd "$EXER_DIR" && gofmt -l "$STUDENT" ) > "$TMPDIR/gofmt.out" || true
-  (cd "$EXER_DIR" && go vet "$STUDENT" ) > "$TMPDIR/govet.out" 2>&1 || true
-  if [[ -s "$TMPDIR/gofmt.out" ]]; then
-    echo "gofmt suggests changes in:" >&2
-    sed -n '1,200p' "$TMPDIR/gofmt.out" >&2
+    echo "DRY RUN: go run '$STUDENT' > '$student_out' 2> '$student_err'"
   else
-    echo "gofmt: OK"
+    go run "$STUDENT" >"$student_out" 2>"$student_err"
   fi
-  if [[ -s "$TMPDIR/govet.out" ]]; then
-    echo "go vet warnings:" >&2
-    sed -n '1,200p' "$TMPDIR/govet.out" >&2
-  else
-    echo "go vet: OK"
-  fi
-  rm -rf "$TMPDIR"
-  exit 0
-fi
-
-echo "Running student code..."
-set +e
-if [[ $DRY_RUN -eq 1 ]]; then
-  echo "DRY RUN: go run '$STUDENT' > '$student_out' 2> '$student_err'"
-else
-  go run "$STUDENT" >"$student_out" 2>"$student_err"
-fi
-SEX=$?
-echo $SEX > "$student_exit"
-set -e
-if [[ $SEX -ne 0 ]]; then
-  echo "Student program exited with non-zero status ($SEX). Stderr:" >&2
-  sed -n '1,200p' "$student_err" >&2
-  echo "--- Full stdout ---"
-  sed -n '1,200p' "$student_out"
-fi
-
-echo "Running solution code..."
-set +e
-if [[ $DRY_RUN -eq 1 ]]; then
-  echo "DRY RUN: go run '$SOLUTION' > '$solution_out' 2> '$solution_err'"
-  echo
-  echo "DRY RUN: (no outputs produced)"
-  # Clean up tmpdir and exit successfully for dry-run
-  rm -rf "$TMPDIR"
-  exit 0
-else
-  go run "$SOLUTION" >"$solution_out" 2>"$solution_err"
-  SOX=$?
-  echo $SOX > "$solution_exit"
+  SEX=$?
+  echo $SEX > "$student_exit"
   set -e
-fi
-if [[ $SOX -ne 0 ]]; then
-  echo "Solution program exited with non-zero status ($SOX). Stderr:" >&2
-  sed -n '1,200p' "$solution_err" >&2
-  echo "--- Full stdout ---"
+  if [[ $SEX -ne 0 ]]; then
+    echo "Student program exited with non-zero status ($SEX). Stderr:" >&2
+    sed -n '1,200p' "$student_err" >&2
+    echo "--- Full stdout ---"
+    sed -n '1,200p' "$student_out"
+  fi
+
+  echo "Running solution code..."
+  set +e
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY RUN: go run '$SOLUTION' > '$solution_out' 2> '$solution_err'"
+    echo
+    echo "DRY RUN: (no outputs produced)"
+    # Clean up tmpdir and exit successfully for dry-run
+    rm -rf "$TMPDIR"
+    exit 0
+  else
+    go run "$SOLUTION" >"$solution_out" 2>"$solution_err"
+    SOX=$?
+    echo $SOX > "$solution_exit"
+    set -e
+  fi
+  if [[ $SOX -ne 0 ]]; then
+    echo "Solution program exited with non-zero status ($SOX). Stderr:" >&2
+    sed -n '1,200p' "$solution_err" >&2
+    echo "--- Full stdout ---"
+    sed -n '1,200p' "$solution_out"
+  fi
+
+  echo
+  echo "--- Student stdout (raw) ---"
+  sed -n '1,200p' "$student_out"
+  echo ""
+  echo "--- Solution stdout (raw) ---"
   sed -n '1,200p' "$solution_out"
-fi
+  echo ""
+  echo "--- Diff (solution vs student) ---"
 
-echo
-echo "--- Student stdout (raw) ---"
-sed -n '1,200p' "$student_out"
-echo ""
-echo "--- Solution stdout (raw) ---"
-sed -n '1,200p' "$solution_out"
-echo ""
-echo "--- Diff (solution vs student) ---"
+  # normalize both outputs before diffing
+  norm_student="$TMPDIR/student.norm"
+  norm_solution="$TMPDIR/solution.norm"
+  cat "$student_out" | normalize > "$norm_student"
+  cat "$solution_out" | normalize > "$norm_solution"
 
-# normalize both outputs before diffing
-norm_student="$TMPDIR/student.norm"
-norm_solution="$TMPDIR/solution.norm"
-cat "$student_out" | normalize > "$norm_student"
-cat "$solution_out" | normalize > "$norm_solution"
+  DIFF_OK=0
+  if diff -u "$norm_solution" "$norm_student" >/dev/stdout 2>/dev/null; then
+    DIFF_OK=1
+  fi
 
-DIFF_OK=0
-if diff -u "$norm_solution" "$norm_student" >/dev/stdout 2>/dev/null; then
-  DIFF_OK=1
-fi
+  # Compare stderr normalized
+  norm_student_err="$TMPDIR/student.err.norm"
+  norm_solution_err="$TMPDIR/solution.err.norm"
+  cat "$student_err" | normalize > "$norm_student_err"
+  cat "$solution_err" | normalize > "$norm_solution_err"
+  ERR_DIFF_OK=0
+  if diff -u "$norm_solution_err" "$norm_student_err" >/dev/stdout 2>/dev/null; then
+    ERR_DIFF_OK=1
+  fi
 
-# Compare stderr normalized
-norm_student_err="$TMPDIR/student.err.norm"
-norm_solution_err="$TMPDIR/solution.err.norm"
-cat "$student_err" | normalize > "$norm_student_err"
-cat "$solution_err" | normalize > "$norm_solution_err"
-ERR_DIFF_OK=0
-if diff -u "$norm_solution_err" "$norm_student_err" >/dev/stdout 2>/dev/null; then
-  ERR_DIFF_OK=1
-fi
+  # Read exit codes
+  SEX=$(cat "$student_exit")
+  SOX=$(cat "$solution_exit")
 
-# Read exit codes
-SEX=$(cat "$student_exit")
-SOX=$(cat "$solution_exit")
+  OK=true
+  if [[ $DIFF_OK -eq 1 && $ERR_DIFF_OK -eq 1 && $SEX -eq $SOX ]]; then
+    echo
+    echo "Outputs and stderr and exit codes match — well done!"
+  else
+    OK=false
+    echo
+    echo "Difference summary:" >&2
+    if [[ $DIFF_OK -ne 1 ]]; then
+      echo "  - stdout differs (see below)" >&2
+      echo "--- Stdout diff ---"
+      pretty_diff "$norm_solution" "$norm_student"
+    else
+      echo "  - stdout: match" >&2
+    fi
+    if [[ $ERR_DIFF_OK -ne 1 ]]; then
+      echo "  - stderr differs (see below):" >&2
+      echo "--- Stderr diff ---"
+      pretty_diff "$norm_solution_err" "$norm_student_err"
+    else
+      echo "  - stderr: match" >&2
+    fi
+    if [[ $SEX -ne $SOX ]]; then
+      echo "  - exit codes differ: student=$SEX solution=$SOX" >&2
+    else
+      echo "  - exit codes: match ($SEX)" >&2
+    fi
+  fi
 
-OK=true
-if [[ $DIFF_OK -eq 1 && $ERR_DIFF_OK -eq 1 && $SEX -eq $SOX ]]; then
-  echo
-  echo "Outputs and stderr and exit codes match — well done!"
+  # Clean up unless NO_CLEAN is set
+  if [[ "$OK" == true && $NO_CLEAN -eq 0 ]]; then
+    rm -rf "$TMPDIR"
+  elif [[ "$OK" == false && $NO_CLEAN -eq 0 ]]; then
+    # on failure, default to cleaning too (user requested autoclean). If user wants to keep outputs, use --no-clean
+    rm -rf "$TMPDIR"
+  fi
+
+  if [[ "$OK" == true ]]; then
+    exit 0
+  else
+    if [[ $NO_CLEAN -eq 1 ]]; then
+      echo "Temporary files left in: $TMPDIR" >&2
+    fi
+    exit 7
+  fi
 else
-  OK=false
-  echo
-  echo "Difference summary:" >&2
-  if [[ $DIFF_OK -ne 1 ]]; then
-    echo "  - stdout differs (see below)" >&2
-    echo "--- Stdout diff ---"
-    pretty_diff "$norm_solution" "$norm_student"
-  else
-    echo "  - stdout: match" >&2
-  fi
-  if [[ $ERR_DIFF_OK -ne 1 ]]; then
-    echo "  - stderr differs (see below):" >&2
-    echo "--- Stderr diff ---"
-    pretty_diff "$norm_solution_err" "$norm_student_err"
-  else
-    echo "  - stderr: match" >&2
-  fi
-  if [[ $SEX -ne $SOX ]]; then
-    echo "  - exit codes differ: student=$SEX solution=$SOX" >&2
-  else
-    echo "  - exit codes: match ($SEX)" >&2
-  fi
-fi
-
-
-# Clean up unless NO_CLEAN is set
-if [[ "$OK" == true && $NO_CLEAN -eq 0 ]]; then
-  rm -rf "$TMPDIR"
-elif [[ "$OK" == false && $NO_CLEAN -eq 0 ]]; then
-  # on failure, default to cleaning too (user requested autoclean). If user wants to keep outputs, use --no-clean
-  rm -rf "$TMPDIR"
-fi
-
-if [[ "$OK" == true ]]; then
-  exit 0
-else
-  if [[ $NO_CLEAN -eq 1 ]]; then
-    echo "Temporary files left in: $TMPDIR" >&2
-  fi
+  echo "Error running legacy (diff-based) test mode" >&2
   exit 7
 fi
