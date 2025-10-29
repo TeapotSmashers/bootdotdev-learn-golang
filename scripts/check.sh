@@ -249,6 +249,35 @@ normalize() {
   sed 's/[ \t]*$//' | awk 'BEGIN{p=0} {lines[++n]=$0} END{i=1; while(i<=n && lines[i]=="") i++; j=n; while(j>=i && lines[j]=="") j--; for(k=i;k<=j;k++) print lines[k]}'
 }
 
+pretty_diff() {
+  left="$1"
+  right="$2"
+  if [[ $DIFF_VERTICAL -eq 1 ]]; then
+    # side-by-side
+    if command -v sdiff >/dev/null 2>&1; then
+      # portable side-by-side with width
+      sdiff -w 160 "$left" "$right" | sed -n '1,200p'
+      return
+    else
+      echo "sdiff not available; falling back to unified diff" >&2
+    fi
+  fi
+
+  # horizontal colored diff: prefer git --no-pager diff --no-index --color
+  if command -v git >/dev/null 2>&1; then
+    git --no-pager diff --no-index --color -- "$left" "$right" || true
+    return
+  fi
+
+  # fallback to diff -u, try colordiff if present
+  if command -v colordiff >/dev/null 2>&1; then
+    colordiff -u "$left" "$right" || true
+    return
+  fi
+
+  diff -u "$left" "$right" || true
+}
+
 if [[ $CHECK_ONLY -eq 1 ]]; then
   echo "Running static checks on student file..."
   if [[ $DRY_RUN -eq 1 ]]; then
@@ -376,33 +405,6 @@ else
   fi
 fi
 
-pretty_diff() {
-  left="$1"
-  right="$2"
-  if [[ $DIFF_VERTICAL -eq 1 ]]; then
-    # side-by-side
-    if command -v sdiff >/dev/null 2>&1; then
-      sdiff -W 160 --expand-tabs --left-column "$left" "$right" | sed -n '1,200p'
-      return
-    else
-      echo "sdiff not available; falling back to unified diff" >&2
-    fi
-  fi
-
-  # horizontal colored diff: prefer git --no-pager diff --no-index --color
-  if command -v git >/dev/null 2>&1; then
-    git --no-pager diff --no-index --color -- "$left" "$right" || true
-    return
-  fi
-
-  # fallback to diff -u, try colordiff if present
-  if command -v colordiff >/dev/null 2>&1; then
-    colordiff -u "$left" "$right" || true
-    return
-  fi
-
-  diff -u "$left" "$right" || true
-}
 
 # Clean up unless NO_CLEAN is set
 if [[ "$OK" == true && $NO_CLEAN -eq 0 ]]; then
