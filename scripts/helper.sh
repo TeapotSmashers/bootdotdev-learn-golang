@@ -16,6 +16,7 @@ Additional commands:
   --open, -o            Open all files in the exercise folder in an editor (auto-detected)
   --editor <cmd>        Force an editor command (example: "code" or "nvim")
   --dry-run, -d         Print the editor command instead of executing it
+  --test-only           Force test-only mode (run \`go test -v\` for the exercise if available)
   --vertical, -V        Show vertical (side-by-side) diffs instead of the default unified diff
 
 Examples:
@@ -35,6 +36,7 @@ OPEN=0
 FORCE_EDITOR=""
 DRY_RUN=0
 DIFF_VERTICAL=0
+TEST_ONLY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -54,6 +56,8 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=1; shift ;;
     --vertical|-V)
       DIFF_VERTICAL=1; shift ;;
+    --test-only)
+      TEST_ONLY=1; shift ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -230,8 +234,8 @@ SOLUTION="$EXER_DIR/complete.go"
 # New test-mode: if the exercise contains a main_test.go, prefer running `go test <pkg>`
 TEST_FILE="$EXER_DIR/main_test.go"
 
-# If a main_test.go exists in the exercise directory, run `go test` for that package
-if [[ -f "$TEST_FILE" ]]; then
+# Test mode: run tests when main_test.go exists OR when --test-only is set
+if [[ -f "$TEST_FILE" || $TEST_ONLY -eq 1 ]]; then
   # Make sure we don't attempt to run open/edit or static check modes together
   if [[ $OPEN -eq 1 ]]; then
     echo "--open cannot be combined with test execution" >&2
@@ -241,17 +245,45 @@ if [[ -f "$TEST_FILE" ]]; then
   # compute module-relative package path for `go test` (relative to ROOT_DIR)
   rel_pkg="${EXER_DIR#$ROOT_DIR/}"
 
-  echo "Detected test file: $TEST_FILE"
-  echo "Running: go test ./${rel_pkg}"
+  echo "Test mode: package=./${rel_pkg}"
+  echo ""
 
   if [[ $DRY_RUN -eq 1 ]]; then
-    echo "DRY RUN: cd '$ROOT_DIR' && go test ./${rel_pkg}"
+    echo "DRY RUN: cd '$ROOT_DIR' && go test -v ./${rel_pkg}"
     exit 0
   fi
 
-  # Run tests from the repository root so module paths resolve correctly
-  (cd "$ROOT_DIR" && go test -v ./${rel_pkg})
-  exit $?
+  # capture outputs into TMPDIR so we can optionally preserve them
+  TMPDIR=$(mktemp -d)
+  test_out="$TMPDIR/test.out"
+  test_err="$TMPDIR/test.err"
+  test_exit="$TMPDIR/test.exit"
+
+  echo "Running:"
+  echo "  go test -v ./${rel_pkg}"
+  # echo "(capturing output to $TMPDIR)"
+  echo ""
+  set +e
+  (cd "$ROOT_DIR" && go test -v ./${rel_pkg} >"$test_out" 2>"$test_err")
+  TEX=$?
+  echo $TEX > "$test_exit"
+  set -e
+
+  echo "--- Test stdout ---"
+  sed -n '1,200p' "$test_out" || true
+  echo ""
+  echo "--- Test stderr ---"
+  sed -n '1,200p' "$test_err" || true
+  echo ""
+  echo "Test exit code: $TEX"
+
+  if [[ $NO_CLEAN -eq 0 ]]; then
+    rm -rf "$TMPDIR"
+  else
+    echo "Test output preserved in: $TMPDIR" >&2
+  fi
+
+  exit $TEX
 fi
 
 if [[ ! -f "$STUDENT" ]]; then
@@ -263,6 +295,7 @@ if [[ ! -f "$SOLUTION" ]]; then
   exit 6
 fi
 
+# for legacy test mode
 TMPDIR=$(mktemp -d)
 student_out="$TMPDIR/student.out"
 student_err="$TMPDIR/student.err"
