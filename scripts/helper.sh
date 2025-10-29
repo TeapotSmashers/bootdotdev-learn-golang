@@ -17,6 +17,7 @@ Additional commands:
   --editor <cmd>        Force an editor command (example: "code" or "nvim")
   --dry-run, -d         Print the editor command instead of executing it
   --test-only           Force test-only mode (run \`go test -v\` for the exercise if available)
+  --no-diff-test        Disable legacy (diff-based) test mode
   --vertical, -V        Show vertical (side-by-side) diffs instead of the default unified diff
 
 Examples:
@@ -37,6 +38,7 @@ FORCE_EDITOR=""
 DRY_RUN=0
 DIFF_VERTICAL=0
 TEST_ONLY=0
+DIFF_TEST=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -45,19 +47,21 @@ while [[ $# -gt 0 ]]; do
     --lesson|-l)
       LESSON="$2"; shift 2 ;;
     --check|-c)
-      CHECK_ONLY=1; shift ;;
+      CHECK_ONLY=1; TEST_ONLY=0; DIFF_TEST=0; shift ;;
     --no-clean|-n)
       NO_CLEAN=1; shift ;;
     --open|-o)
-      OPEN=1; shift ;;
+      OPEN=1; TEST_ONLY=0; DIFF_TEST=0; shift ;;
     --editor)
       FORCE_EDITOR="$2"; shift 2 ;;
     --dry-run|-d)
-      DRY_RUN=1; shift ;;
+      DRY_RUN=1; TEST_ONLY=0; DIFF_TEST=0; shift ;;
     --vertical|-V)
       DIFF_VERTICAL=1; shift ;;
     --test-only)
-      TEST_ONLY=1; shift ;;
+      TEST_ONLY=1; DIFF_TEST=0; shift ;;
+    --no-diff-test)
+      DIFF_TEST=0; TEST_ONLY=0; shift ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -229,6 +233,7 @@ if [[ $OPEN -eq 1 ]]; then
 fi
 
 
+# Legacy test mode: run student code and compare (diff) output
 STUDENT="$EXER_DIR/code.go"
 SOLUTION="$EXER_DIR/complete.go"
 
@@ -277,6 +282,7 @@ if [[ $CHECK_ONLY -eq 1 ]]; then
   rm -rf "$TMPDIR"
   exit 0
 fi
+
 
 # Test mode: run tests when main_test.go exists OR when --test-only is set
 if [[ -f "$TEST_FILE" || $TEST_ONLY -eq 1 ]]; then
@@ -337,6 +343,7 @@ normalize() {
   sed 's/[ \t]*$//' | awk 'BEGIN{p=0} {lines[++n]=$0} END{i=1; while(i<=n && lines[i]=="") i++; j=n; while(j>=i && lines[j]=="") j--; for(k=i;k<=j;k++) print lines[k]}'
 }
 
+# helper: pretty-print diff
 pretty_diff() {
   left="$1"
   right="$2"
@@ -366,7 +373,9 @@ pretty_diff() {
   diff -u "$left" "$right" || true
 }
 
-if [[ $TEST_ONLY -ne 1 ]]; then
+
+# Legacy test mode: run student code and compare (diff) output
+if [[ (-f $STUDENT && -f $SOLUTION) || $DIFF_TEST -eq 1 ]]; then
   # Check that student and solution files exist
   if [[ ! -f "$STUDENT" ]]; then
     echo "Student file not found: $STUDENT" >&2
@@ -504,6 +513,9 @@ if [[ $TEST_ONLY -ne 1 ]]; then
     fi
     exit 7
   fi
+elif [[ $DIFF_TEST -eq 0 ]]; then
+  echo "Legacy (diff-based) test mode disabled" >&2
+  exit 0
 else
   echo "Error running legacy (diff-based) test mode" >&2
   exit 7
