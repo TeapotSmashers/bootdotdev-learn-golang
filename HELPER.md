@@ -1,4 +1,4 @@
-check-answer
+HELPER
 ============
 
 Small helper script to compare student `code.go` with the solution `complete.go` for exercises.
@@ -8,11 +8,11 @@ Usage
 
 From repository root:
 
-`./check-answer --module 3 --lesson 4`
+`./course-helper --module 3 --lesson 4`
 
 Short flags are available:
 
-`./check-answer -m 3 -l 4`
+`./course-helper -m 3 -l 4`
 
 Options
 -------
@@ -42,8 +42,8 @@ Dry-run
 Use `--dry-run` to see the commands that would be executed for either opening files or running checks.
 Examples:
 
-	./check-answer -m 3 -l 4 --open --dry-run
-	./check-answer -m 3 -l 4 --dry-run
+	./course-helper -m 3 -l 4 --open --dry-run
+	./course-helper -m 3 -l 4 --dry-run
 
 .env editor preference
 ----------------------
