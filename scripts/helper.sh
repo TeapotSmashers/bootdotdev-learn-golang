@@ -227,6 +227,33 @@ fi
 STUDENT="$EXER_DIR/code.go"
 SOLUTION="$EXER_DIR/complete.go"
 
+# New test-mode: if the exercise contains a main_test.go, prefer running `go test <pkg>`
+TEST_FILE="$EXER_DIR/main_test.go"
+
+# If a main_test.go exists in the exercise directory, run `go test` for that package
+if [[ -f "$TEST_FILE" ]]; then
+  # Make sure we don't attempt to run open/edit or static check modes together
+  if [[ $OPEN -eq 1 ]]; then
+    echo "--open cannot be combined with test execution" >&2
+    exit 2
+  fi
+
+  # compute module-relative package path for `go test` (relative to ROOT_DIR)
+  rel_pkg="${EXER_DIR#$ROOT_DIR/}"
+
+  echo "Detected test file: $TEST_FILE"
+  echo "Running: go test ./${rel_pkg}"
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY RUN: cd '$ROOT_DIR' && go test ./${rel_pkg}"
+    exit 0
+  fi
+
+  # Run tests from the repository root so module paths resolve correctly
+  (cd "$ROOT_DIR" && go test -v ./${rel_pkg})
+  exit $?
+fi
+
 if [[ ! -f "$STUDENT" ]]; then
   echo "Student file not found: $STUDENT" >&2
   exit 5
