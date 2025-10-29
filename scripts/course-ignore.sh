@@ -41,7 +41,7 @@ case "$cmd" in
     if grep -Fxq "/course/" "$EXCLUDE_FILE" 2>/dev/null; then
       echo "/course/ already present in $EXCLUDE_FILE"
     else
-      printf "\n# Ignore local lesson progress\n/course/\n" >> "$EXCLUDE_FILE"
+      printf "\n# Ignore local lesson progress\n$(git -C "$ROOT_DIR" ls-files -v course | sed -n '1,200p' | cut -d " " -f 2 | sed 's/^/\//')" >> "$EXCLUDE_FILE"
       echo "Appended /course/ to $EXCLUDE_FILE"
     fi
 
@@ -58,8 +58,10 @@ case "$cmd" in
   unignore)
     echo "Removing /course/ from $EXCLUDE_FILE (local only)"
     if [[ -f "$EXCLUDE_FILE" ]]; then
-      # remove exact line(s) containing /course/
-      sed -i.bak '/\/course\//d' "$EXCLUDE_FILE" || true
+      # remove exact line(s) containing /course/.*
+      sed -i '/^# Ignore local lesson progress[[:space:]]*$/d' "$EXCLUDE_FILE" || true
+      sed -i '/^[[:space:]]*$/d' "$EXCLUDE_FILE" || true
+      sed -i.bak '/^\/course\/.*/d' "$EXCLUDE_FILE" || true
       echo "Updated $EXCLUDE_FILE (backup at $EXCLUDE_FILE.bak)"
     else
       echo "$EXCLUDE_FILE not found; nothing to remove"
