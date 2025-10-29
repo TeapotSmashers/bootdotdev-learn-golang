@@ -24,6 +24,9 @@ Options
 `--check`, `-c`:       Run static checks on the student file (`gofmt -l` and `go vet`)
 
 `--no-clean`, `-n`:    Keep temporary output files when the run completes (default is to clean)
+`--open`, `-o`:        Open exercise files in an editor (auto-detected; mutually exclusive with run/check)
+`--editor`:            Force the editor command (overrides detection)
+`--dry-run`, `-d`:     Print the commands that would be executed (for open and check modes)
 
 What it does
 ------------
@@ -33,6 +36,19 @@ What it does
 - Captures stdout, stderr and exit codes for each run.
 - Normalizes outputs (trims trailing spaces and leading/trailing blank lines) and compares them with `diff -u`.
 - Prints a short summary and exits with non-zero on mismatch.
+
+Dry-run
+-------
+Use `--dry-run` to see the commands that would be executed for either opening files or running checks.
+Examples:
+
+	./check-answer -m 3 -l 4 --open --dry-run
+	./check-answer -m 3 -l 4 --dry-run
+
+.env editor preference
+----------------------
+If a `.env` file exists at the repo root and contains `EDITOR=...`, the value there is preferred over
+`$VISUAL` or `$EDITOR` when opening files.
 
 Notes
 -----
