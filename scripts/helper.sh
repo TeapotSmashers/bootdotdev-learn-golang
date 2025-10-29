@@ -234,8 +234,8 @@ fi
 
 
 # Legacy test mode: run student code and compare (diff) output
-STUDENT="$EXER_DIR/code.go"
-SOLUTION="$EXER_DIR/complete.go"
+STUDENT_FILE="$EXER_DIR/code.go"
+SOLUTION_FILE="$EXER_DIR/complete.go"
 
 # New test-mode: if the exercise contains a main_test.go, prefer running `go test <pkg>`
 MAIN_FILE="$EXER_DIR/main.go"
@@ -248,11 +248,11 @@ if [[ $CHECK_ONLY -eq 1 ]]; then
     if [[ -f "$MAIN_FILE" ]]; then
       echo "DRY RUN: cd '$EXER_DIR' && gofmt -l '$MAIN_FILE' > '$TMPDIR/gofmt.out' || true"
       echo "DRY RUN: cd '$EXER_DIR' && go vet '$MAIN_FILE' > '$TMPDIR/govet.out' 2>&1 || true"
-    elif [[ -f "$STUDENT" ]]; then
-      echo "DRY RUN: cd '$EXER_DIR' && gofmt -l '$STUDENT' > '$TMPDIR/gofmt.out' || true"
-      echo "DRY RUN: cd '$EXER_DIR' && go vet '$STUDENT' > '$TMPDIR/govet.out' 2>&1 || true"
+    elif [[ -f "$STUDENT_FILE" ]]; then
+      echo "DRY RUN: cd '$EXER_DIR' && gofmt -l '$STUDENT_FILE' > '$TMPDIR/gofmt.out' || true"
+      echo "DRY RUN: cd '$EXER_DIR' && go vet '$STUDENT_FILE' > '$TMPDIR/govet.out' 2>&1 || true"
     else
-      echo "ERROR: neither $MAIN_FILE nor $STUDENT found" >&2
+      echo "ERROR: neither $MAIN_FILE nor $STUDENT_FILE found" >&2
       exit 2
     fi
     exit 0
@@ -260,11 +260,11 @@ if [[ $CHECK_ONLY -eq 1 ]]; then
   if [[ -f "$MAIN_FILE" ]]; then
     (cd "$EXER_DIR" && gofmt -l "$MAIN_FILE" ) > "$TMPDIR/gofmt.out" || true
     (cd "$EXER_DIR" && go vet "$MAIN_FILE" ) > "$TMPDIR/govet.out" 2>&1 || true
-  elif [[ -f "$STUDENT" ]]; then
-    (cd "$EXER_DIR" && gofmt -l "$STUDENT" ) > "$TMPDIR/gofmt.out" || true
-    (cd "$EXER_DIR" && go vet "$STUDENT" ) > "$TMPDIR/govet.out" 2>&1 || true
+  elif [[ -f "$STUDENT_FILE" ]]; then
+    (cd "$EXER_DIR" && gofmt -l "$STUDENT_FILE" ) > "$TMPDIR/gofmt.out" || true
+    (cd "$EXER_DIR" && go vet "$STUDENT_FILE" ) > "$TMPDIR/govet.out" 2>&1 || true
   else
-    echo "ERROR: neither $MAIN_FILE nor $STUDENT found" >&2
+    echo "ERROR: neither $MAIN_FILE nor $STUDENT_FILE found" >&2
     exit 2
   fi
   if [[ -s "$TMPDIR/gofmt.out" ]]; then
@@ -375,14 +375,14 @@ pretty_diff() {
 
 
 # Legacy test mode: run student code and compare (diff) output
-if [[ (-f $STUDENT && -f $SOLUTION) || $DIFF_TEST -eq 1 ]]; then
+if [[ (-f $STUDENT_FILE && -f $SOLUTION_FILE) || $DIFF_TEST -eq 1 ]]; then
   # Check that student and solution files exist
-  if [[ ! -f "$STUDENT" ]]; then
-    echo "Student file not found: $STUDENT" >&2
+  if [[ ! -f "$STUDENT_FILE" ]]; then
+    echo "Student file not found: $STUDENT_FILE" >&2
     exit 5
   fi
-  if [[ ! -f "$SOLUTION" ]]; then
-    echo "Solution file not found: $SOLUTION" >&2
+  if [[ ! -f "$SOLUTION_FILE" ]]; then
+    echo "Solution file not found: $SOLUTION_FILE" >&2
     exit 6
   fi
 
@@ -398,9 +398,9 @@ if [[ (-f $STUDENT && -f $SOLUTION) || $DIFF_TEST -eq 1 ]]; then
   echo "Running student code..."
   set +e
   if [[ $DRY_RUN -eq 1 ]]; then
-    echo "DRY RUN: go run '$STUDENT' > '$student_out' 2> '$student_err'"
+    echo "DRY RUN: go run '$STUDENT_FILE' > '$student_out' 2> '$student_err'"
   else
-    go run "$STUDENT" >"$student_out" 2>"$student_err"
+    go run "$STUDENT_FILE" >"$student_out" 2>"$student_err"
   fi
   SEX=$?
   echo $SEX > "$student_exit"
@@ -415,14 +415,14 @@ if [[ (-f $STUDENT && -f $SOLUTION) || $DIFF_TEST -eq 1 ]]; then
   echo "Running solution code..."
   set +e
   if [[ $DRY_RUN -eq 1 ]]; then
-    echo "DRY RUN: go run '$SOLUTION' > '$solution_out' 2> '$solution_err'"
+    echo "DRY RUN: go run '$SOLUTION_FILE' > '$solution_out' 2> '$solution_err'"
     echo
     echo "DRY RUN: (no outputs produced)"
     # Clean up tmpdir and exit successfully for dry-run
     rm -rf "$TMPDIR"
     exit 0
   else
-    go run "$SOLUTION" >"$solution_out" 2>"$solution_err"
+    go run "$SOLUTION_FILE" >"$solution_out" 2>"$solution_err"
     SOX=$?
     echo $SOX > "$solution_exit"
     set -e
