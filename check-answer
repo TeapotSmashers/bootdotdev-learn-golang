@@ -20,12 +20,17 @@ EOF
 MODULE=""
 LESSON=""
 
+
+CHECK_ONLY=0
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --module)
+    --module|-m)
       MODULE="$2"; shift 2 ;;
-    --lesson)
+    --lesson|-l)
       LESSON="$2"; shift 2 ;;
+    --static-check|-s)
+      CHECK_ONLY=1; shift ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -41,35 +46,53 @@ fi
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Find the module directory under course that starts with the module number and a hyphen
+# Find the module directory under course that contains the MODULE substring
 MODULE_DIR=""
+# First try prefix match (e.g., 3-...), then fallback to substring match
 for d in "$ROOT_DIR"/course/${MODULE}-*; do
   if [[ -d "$d" ]]; then
     MODULE_DIR="$d"
     break
   fi
 done
+if [[ -z "$MODULE_DIR" ]]; then
+  for d in "$ROOT_DIR"/course/*; do
+    if [[ -d "$d" && "$(basename "$d")" == *"$MODULE"* ]]; then
+      MODULE_DIR="$d"
+      break
+    fi
+  done
+fi
 
 if [[ -z "$MODULE_DIR" ]]; then
-  echo "Module directory for module $MODULE not found under $ROOT_DIR/course" >&2
+  echo "Module directory containing '$MODULE' not found under $ROOT_DIR/course" >&2
   exit 3
 fi
 
-# Search in exercises and challenges
+# Search in exercises and challenges for a folder whose basename contains LESSON substring
 EXER_DIR=""
 for parent in exercises challenges; do
-  candidate="$MODULE_DIR/$parent/$LESSON-"
-  # find folder that starts with LESSON-
-  for d in "$MODULE_DIR/$parent/$LESSON-"*; do
-    if [[ -d "$d" ]]; then
-      EXER_DIR="$d"
-      break 2
-    fi
-  done
+  PARENT_DIR="$MODULE_DIR/$parent"
+  if [[ -d "$PARENT_DIR" ]]; then
+    # try prefix match first (e.g., 4-... or 6a-...)
+    for d in "$PARENT_DIR"/${LESSON}-*; do
+      if [[ -d "$d" ]]; then
+        EXER_DIR="$d"
+        break 2
+      fi
+    done
+    # fallback to substring match
+    for d in "$PARENT_DIR"/*; do
+      if [[ -d "$d" && "$(basename "$d")" == *"$LESSON"* ]]; then
+        EXER_DIR="$d"
+        break 2
+      fi
+    done
+  fi
 done
 
 if [[ -z "$EXER_DIR" ]]; then
-  echo "Exercise directory for lesson $LESSON not found under $MODULE_DIR" >&2
+  echo "Exercise directory containing '$LESSON' not found under $MODULE_DIR" >&2
   exit 4
 fi
 
@@ -93,6 +116,32 @@ student_err="$TMPDIR/student.err"
 solution_out="$TMPDIR/solution.out"
 solution_err="$TMPDIR/solution.err"
 
+# helper: normalize output (trim leading/trailing blank lines and trailing spaces)
+normalize() {
+  # read from stdin, trim trailing spaces, remove leading/trailing blank lines
+  sed 's/[ \t]*$//' | awk 'BEGIN{p=0} {lines[++n]=$0} END{i=1; while(i<=n && lines[i]=="") i++; j=n; while(j>=i && lines[j]=="") j--; for(k=i;k<=j;k++) print lines[k]}'
+}
+
+if [[ $CHECK_ONLY -eq 1 ]]; then
+  echo "Running static checks on student file..."
+  (cd "$EXER_DIR" && gofmt -l "$STUDENT" ) > "$TMPDIR/gofmt.out" || true
+  (cd "$EXER_DIR" && go vet "$STUDENT" ) > "$TMPDIR/govet.out" 2>&1 || true
+  if [[ -s "$TMPDIR/gofmt.out" ]]; then
+    echo "gofmt suggests changes in:" >&2
+    sed -n '1,200p' "$TMPDIR/gofmt.out" >&2
+  else
+    echo "gofmt: OK"
+  fi
+  if [[ -s "$TMPDIR/govet.out" ]]; then
+    echo "go vet warnings:" >&2
+    sed -n '1,200p' "$TMPDIR/govet.out" >&2
+  else
+    echo "go vet: OK"
+  fi
+  rm -rf "$TMPDIR"
+  exit 0
+fi
+
 echo "Running student code..."
 if ! go run "$STUDENT" >"$student_out" 2>"$student_err"; then
   echo "Student program exited with non-zero status. Stderr:" >&2
@@ -110,12 +159,18 @@ if ! go run "$SOLUTION" >"$solution_out" 2>"$solution_err"; then
 fi
 
 echo
-echo "--- Student stdout ---"
+echo "--- Student stdout (raw) ---"
 sed -n '1,200p' "$student_out"
-echo "--- Solution stdout ---"
+echo "--- Solution stdout (raw) ---"
 sed -n '1,200p' "$solution_out"
 
-if diff -u "$solution_out" "$student_out"; then
+# normalize both outputs before diffing
+norm_student="$TMPDIR/student.norm"
+norm_solution="$TMPDIR/solution.norm"
+cat "$student_out" | normalize > "$norm_student"
+cat "$solution_out" | normalize > "$norm_solution"
+
+if diff -u "$norm_solution" "$norm_student"; then
   echo
   echo "Outputs match — well done!"
   rm -rf "$TMPDIR"
