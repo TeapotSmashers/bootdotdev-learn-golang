@@ -228,11 +228,55 @@ if [[ $OPEN -eq 1 ]]; then
   exit 2
 fi
 
+
 STUDENT="$EXER_DIR/code.go"
 SOLUTION="$EXER_DIR/complete.go"
 
 # New test-mode: if the exercise contains a main_test.go, prefer running `go test <pkg>`
 TEST_FILE="$EXER_DIR/main_test.go"
+
+
+if [[ $CHECK_ONLY -eq 1 ]]; then
+  TMPDIR=$(mktemp -d)
+  echo "Running static checks on student file..."
+  if [[ $DRY_RUN -eq 1 ]]; then
+    if [[ -f "$TEST_FILE" ]]; then
+      echo "DRY RUN: cd '$EXER_DIR' && gofmt -l '$TEST_FILE' > '$TMPDIR/gofmt.out' || true"
+      echo "DRY RUN: cd '$EXER_DIR' && go vet '$TEST_FILE' > '$TMPDIR/govet.out' 2>&1 || true"
+    elif [[ -f "$STUDENT" ]]; then
+      echo "DRY RUN: cd '$EXER_DIR' && gofmt -l '$STUDENT' > '$TMPDIR/gofmt.out' || true"
+      echo "DRY RUN: cd '$EXER_DIR' && go vet '$STUDENT' > '$TMPDIR/govet.out' 2>&1 || true"
+    else
+      echo "ERROR: neither $TEST_FILE nor $STUDENT found" >&2
+      exit 2
+    fi
+    exit 0
+  fi
+  if [[ -f "$TEST_FILE" ]]; then
+    (cd "$EXER_DIR" && gofmt -l "$TEST_FILE" ) > "$TMPDIR/gofmt.out" || true
+    (cd "$EXER_DIR" && go vet "$TEST_FILE" ) > "$TMPDIR/govet.out" 2>&1 || true
+  elif [[ -f "$STUDENT" ]]; then
+    (cd "$EXER_DIR" && gofmt -l "$STUDENT" ) > "$TMPDIR/gofmt.out" || true
+    (cd "$EXER_DIR" && go vet "$STUDENT" ) > "$TMPDIR/govet.out" 2>&1 || true
+  else
+    echo "ERROR: neither $TEST_FILE nor $STUDENT found" >&2
+    exit 2
+  fi
+  if [[ -s "$TMPDIR/gofmt.out" ]]; then
+    echo "gofmt suggests changes in:" >&2
+    sed -n '1,200p' "$TMPDIR/gofmt.out" >&2
+  else
+    echo "gofmt: OK"
+  fi
+  if [[ -s "$TMPDIR/govet.out" ]]; then
+    echo "go vet warnings:" >&2
+    sed -n '1,200p' "$TMPDIR/govet.out" >&2
+  else
+    echo "go vet: OK"
+  fi
+  rm -rf "$TMPDIR"
+  exit 0
+fi
 
 # Test mode: run tests when main_test.go exists OR when --test-only is set
 if [[ -f "$TEST_FILE" || $TEST_ONLY -eq 1 ]]; then
